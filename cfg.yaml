@@ -1,0 +1,35 @@
+gw:
+  addr:                  localhost    ##本门户对外IP
+  httpListenPort:        9210         ##本门户对外端口
+
+output:
+  prometheus:            false
+  telegraf:              false
+  telegrafAddr:          "tcp4://:8094"
+  pushGateway:           true
+  pushGatewayAddr:       "http://192.168.101.33:9091"
+  jobName:               "p2p"
+
+rest:
+  test:                  false
+  vdn:                   http://192.168.101.12/VDN/   ##VDN
+  period:                60 ##秒
+
+  
+logger:
+  filename:   stdout ##log/soss.log
+  maxSize:    1
+  maxBackups: 3000
+  maxAge:     28
+  
+fileaddress:
+   server_sumary:  "/home/channelfone/Platform/data/diagnos/server_sumary/server_summary_info.flag"
+   user_statistic: "/home/channelfone/Platform/data/diagnos/user_statistic/user_statistic.flag"
+   call_statistic: "/home/channelfone/Platform/data/diagnos/call_statistic/call_statistic.flag"
+   host_info:      "/home/channelfone/Platform/data/diagnos/host/host_info.flag"
+   relay:          "/home/channelfone/Platform/data/diagnos/relay/relay_info.flag"
+   bootstrap:      "/home/channelfone/Platform/data/diagnos/bootstrap/bootstrap_info.flag"
+   dht:            "/home/channelfone/Platform/data/diagnos/dht/dht_info.flag"
+   sps:            "/home/channelfone/Platform/data/diagnos/sps/sps_info.flag"
+   ps:             "/home/channelfone/Platform/data/diagnos/ps/pushserver_info.flag"
+   callmgr:        "/home/channelfone/Platform/data/diagnos/callmgr/callmgr_info.flag"
