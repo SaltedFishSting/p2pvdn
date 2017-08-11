@@ -13,7 +13,7 @@ output:
 rest:
   test:                  false
   vdn:                   http://192.168.101.12/VDN/   ##VDN
-  period:                60 ##秒
+  period:                180 ##秒
 
   
 logger:

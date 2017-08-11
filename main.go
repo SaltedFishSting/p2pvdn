@@ -339,6 +339,7 @@ func extractCallStatistic(callS []string) error {
 
 	if globeCfg.Output.Prometheus || globeCfg.Output.PushGateway {
 		callStatistic_onphone.Set(float64(onphoneNum))
+
 		callStatistic_onphoneV.Set(float64(onphoneVNum))
 		callStatistic_onphoneA.Set(float64(onphoneANum))
 		callStatistic_callTraffic.Set(float64(callTrafficNum))
@@ -1816,7 +1817,7 @@ func main() {
 			{api: globeCfg.Fileaddress.User_statistic, extractor: extractUserStatistic},
 			{api: globeCfg.Fileaddress.Call_statistic, extractor: extractCallStatistic},
 			{api: globeCfg.Fileaddress.Host_info, extractor: extractHost},
-			{api: globeCfg.Fileaddress.Relay, extractor: extractRelay},
+			//{api: globeCfg.Fileaddress.Relay, extractor: extractRelay}
 			{api: globeCfg.Fileaddress.Bootstrap, extractor: extractBootstrap},
 			{api: globeCfg.Fileaddress.Dht, extractor: extractDHT},
 			{api: globeCfg.Fileaddress.Sps, extractor: extractSPS},
@@ -1824,6 +1825,17 @@ func main() {
 			{api: globeCfg.Fileaddress.Callmgr, extractor: extractCM},
 		}
 		for {
+
+			if err := relayfileToPrometheus(globeCfg.Fileaddress.Relay, extractRelay); err != nil {
+				log.Println("fileToPrometheus:", err)
+				call_vdn_err.Inc()
+			} else {
+				if globeCfg.Output.Telegraf {
+					fmt.Fprintf(tcpConnect, collectBuf.String())
+					//fmt.Println(collectBuf.String())
+					collectBuf.Reset()
+				}
+			}
 			for _, api := range apis {
 				//				log.Println(api.api)
 				// 从本地文件获取数据
@@ -1837,6 +1849,7 @@ func main() {
 						collectBuf.Reset()
 					}
 				}
+
 			}
 
 			if globeCfg.Output.PushGateway {
@@ -1958,4 +1971,90 @@ func fileToPrometheus(file string, extractor VMDExtractor) error {
 		i++
 	}
 	return nil
+}
+
+func relayfileToPrometheus(file string, extractor VMDExtractor) error {
+	//relay 节点 map
+
+	relaymap := make(map[string]int)
+	relaymap["103.25.23.121|19"] = 0
+	relaymap["103.25.23.122|20"] = 0
+	relaymap["114.112.74.12|2"] = 0
+	relaymap["122.13.78.226|5"] = 0
+	relaymap["123.138.91.24|9"] = 0
+	relaymap["124.116.176.115|10"] = 0
+	relaymap["125.211.202.28|7"] = 0
+	relaymap["125.88.254.159|6"] = 0
+	relaymap["175.102.21.33|3"] = 0
+	relaymap["175.102.8.227|4"] = 0
+	relaymap["210.51.168.108|1"] = 0
+	relaymap["220.249.119.217|13"] = 0
+	relaymap["221.7.112.74|11"] = 0
+	relaymap["222.171.242.142|8"] = 0
+	relaymap["223.111.205.86|21"] = 0
+	relaymap["223.111.205.90|23"] = 0
+	relaymap["61.183.245.140|14"] = 0
+
+	f, err := os.Open(file)
+	check(err)
+	defer f.Close()
+	buf := bufio.NewReader(f)
+	line, err := buf.ReadString('\n') //读取flag文件 找到当前写到的txt文件
+
+	flag := strings.Split(string(line), "|")
+	fmt.Println(flag)
+	pathDir := filepath.Dir(file)
+	flietxt := strings.TrimSpace(flag[0])
+	txtf, err := os.Open(path.Join(pathDir, flietxt)) //读取txt文件
+	check(err)
+	defer txtf.Close()
+	txtbuf := bufio.NewReader(txtf)
+
+	txtstring, err := ioutil.ReadAll(txtbuf)
+	check(err)
+	lines := strings.Split(string(txtstring), "\n")
+	i, err := strconv.Atoi(flag[1])
+	check(err)
+	j, err := strconv.Atoi(flag[2])
+	check(err)
+	//信息传给prometheus
+	if j-i == 16 { //判断有无relay节点挂掉
+		for i <= j {
+			strss := string(lines[i-1])
+			strss = strings.Replace(strss, "\r", "", -1)
+			infos := strings.Split(strss, "|")
+
+			if err := extractor(infos); err != nil {
+				return err
+			}
+			i++
+		}
+	} else {
+
+		for i <= j {
+			strss := string(lines[i-1])
+			strss = strings.Replace(strss, "\r", "", -1)
+			infos := strings.Split(strss, "|")
+
+			if err := extractor(infos); err != nil {
+				return err
+			}
+			str := infos[2] + "|" + infos[1]
+			relaymap[str] = 1
+			i++
+		}
+		for k, v := range relaymap {
+			if v == 0 {
+				removerelay(k)
+			}
+			if v == 1 {
+				v = 0
+			}
+		}
+	}
+	return nil
+}
+func removerelay(ip string) {
+	relayinfos := strings.Split(ip, "|")
+	relay_onphone.DeleteLabelValues(relayinfos[1], relayinfos[0], "9000")
 }
