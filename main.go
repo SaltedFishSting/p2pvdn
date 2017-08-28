@@ -14,7 +14,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"os/signal"
+
 	"path"
 	"path/filepath"
 	"strconv"
@@ -1793,40 +1793,59 @@ func main() {
 		setupFakeServer()
 	}
 
-	go func() {
-		apis := []struct {
-			api       string
-			extractor VMDExtractor
-		}{
-			//    获取数据的http端口
-			//			{api: "statistic.serverSummary.action", extractor: extractServerSummary},
-			//			{api: "statistic.userStatistic.action", extractor: extractUserStatistic},
-			//			{api: "statistic.callStatistic.action", extractor: extractCallStatistic},
-			//			//			//TODO:statistic.acd.action
-			//			//			//TODO:statistic.im.action
-			//			{api: "statistic.host.action", extractor: extractHost},
-			//			{api: "statistic.relay.action", extractor: extractRelay},
-			//			{api: "statistic.bootstrap.action", extractor: extractBootstrap},
-			//			{api: "statistic.DHT.action", extractor: extractDHT},
-			//			{api: "statistic.SPS.action", extractor: extractSPS},
-			//			{api: "statistic.ANPS.action", extractor: extractANPS},
-			//			{api: "statistic.CM.action", extractor: extractCM},
-			//			//TODO:statistic.rc.action
-			// 从本地文件获取数据
-			{api: globeCfg.Fileaddress.Server_sumary, extractor: extractServerSummary},
-			{api: globeCfg.Fileaddress.User_statistic, extractor: extractUserStatistic},
-			{api: globeCfg.Fileaddress.Call_statistic, extractor: extractCallStatistic},
-			{api: globeCfg.Fileaddress.Host_info, extractor: extractHost},
-			//{api: globeCfg.Fileaddress.Relay, extractor: extractRelay}
-			{api: globeCfg.Fileaddress.Bootstrap, extractor: extractBootstrap},
-			{api: globeCfg.Fileaddress.Dht, extractor: extractDHT},
-			{api: globeCfg.Fileaddress.Sps, extractor: extractSPS},
-			{api: globeCfg.Fileaddress.Ps, extractor: extractANPS},
-			{api: globeCfg.Fileaddress.Callmgr, extractor: extractCM},
-		}
-		for {
+	if globeCfg.Output.Prometheus {
+		go func() {
+			http.Handle("/metrics", promhttp.Handler())
+			log.Fatal(http.ListenAndServe(fmt.Sprintf("%s:%d", globeCfg.Gw.Addr, globeCfg.Gw.HttpListenPort), nil))
+		}()
+	}
 
-			if err := relayfileToPrometheus(globeCfg.Fileaddress.Relay, extractRelay); err != nil {
+	apis := []struct {
+		api       string
+		extractor VMDExtractor
+	}{
+		//    获取数据的http端口
+		//			{api: "statistic.serverSummary.action", extractor: extractServerSummary},
+		//			{api: "statistic.userStatistic.action", extractor: extractUserStatistic},
+		//			{api: "statistic.callStatistic.action", extractor: extractCallStatistic},
+		//			//			//TODO:statistic.acd.action
+		//			//			//TODO:statistic.im.action
+		//			{api: "statistic.host.action", extractor: extractHost},
+		//			{api: "statistic.relay.action", extractor: extractRelay},
+		//			{api: "statistic.bootstrap.action", extractor: extractBootstrap},
+		//			{api: "statistic.DHT.action", extractor: extractDHT},
+		//			{api: "statistic.SPS.action", extractor: extractSPS},
+		//			{api: "statistic.ANPS.action", extractor: extractANPS},
+		//			{api: "statistic.CM.action", extractor: extractCM},
+		//			//TODO:statistic.rc.action
+		// 从本地文件获取数据
+		{api: globeCfg.Fileaddress.Server_sumary, extractor: extractServerSummary},
+		{api: globeCfg.Fileaddress.User_statistic, extractor: extractUserStatistic},
+		{api: globeCfg.Fileaddress.Call_statistic, extractor: extractCallStatistic},
+		{api: globeCfg.Fileaddress.Host_info, extractor: extractHost},
+		//{api: globeCfg.Fileaddress.Relay, extractor: extractRelay}
+		{api: globeCfg.Fileaddress.Bootstrap, extractor: extractBootstrap},
+		{api: globeCfg.Fileaddress.Dht, extractor: extractDHT},
+		{api: globeCfg.Fileaddress.Sps, extractor: extractSPS},
+		{api: globeCfg.Fileaddress.Ps, extractor: extractANPS},
+		{api: globeCfg.Fileaddress.Callmgr, extractor: extractCM},
+	}
+	for {
+
+		if err := relayfileToPrometheus(globeCfg.Fileaddress.Relay, extractRelay); err != nil {
+			log.Println("fileToPrometheus:", err)
+			call_vdn_err.Inc()
+		} else {
+			if globeCfg.Output.Telegraf {
+				fmt.Fprintf(tcpConnect, collectBuf.String())
+				//fmt.Println(collectBuf.String())
+				collectBuf.Reset()
+			}
+		}
+		for _, api := range apis {
+			//				log.Println(api.api)
+			// 从本地文件获取数据
+			if err := fileToPrometheus(api.api, api.extractor); err != nil {
 				log.Println("fileToPrometheus:", err)
 				call_vdn_err.Inc()
 			} else {
@@ -1836,49 +1855,19 @@ func main() {
 					collectBuf.Reset()
 				}
 			}
-			for _, api := range apis {
-				//				log.Println(api.api)
-				// 从本地文件获取数据
-				if err := fileToPrometheus(api.api, api.extractor); err != nil {
-					log.Println("fileToPrometheus:", err)
-					call_vdn_err.Inc()
-				} else {
-					if globeCfg.Output.Telegraf {
-						fmt.Fprintf(tcpConnect, collectBuf.String())
-						//fmt.Println(collectBuf.String())
-						collectBuf.Reset()
-					}
-				}
 
-			}
-
-			if globeCfg.Output.PushGateway {
-				// Push registry, all good.
-				if err := push.FromGatherer("p2p", push.HostnameGroupingKey(), globeCfg.Output.PushGatewayAddr, prometheus.DefaultGatherer); err != nil {
-					log.Println("FromGatherer:", err)
-				}
-			}
-
-			time.Sleep(time.Duration(globeCfg.Rest.Period) * time.Second)
 		}
-	}()
 
-	if globeCfg.Output.Prometheus {
-		go func() {
-			http.Handle("/metrics", promhttp.Handler())
-			log.Fatal(http.ListenAndServe(fmt.Sprintf("%s:%d", globeCfg.Gw.Addr, globeCfg.Gw.HttpListenPort), nil))
-		}()
+		if globeCfg.Output.PushGateway {
+			// Push registry, all good.
+			if err := push.FromGatherer("p2p", push.HostnameGroupingKey(), globeCfg.Output.PushGatewayAddr, prometheus.DefaultGatherer); err != nil {
+				log.Println("FromGatherer:", err)
+			}
+		}
+
+		time.Sleep(time.Duration(globeCfg.Rest.Period) * time.Second)
 	}
 
-	c := make(chan os.Signal, 1)
-	signal.Notify(c)
-	signal.Notify(c, os.Interrupt, os.Kill)
-	s := <-c
-	if fakeServer != nil {
-		fakeServer.Close()
-	}
-	log.Println("exit.", s)
-	//lgr.Rotate()
 }
 
 func loadCfg() {
@@ -1944,7 +1933,7 @@ func fileToPrometheus(file string, extractor VMDExtractor) error {
 	line, err := buf.ReadString('\n') //读取flag文件 找到当前写到的txt文件
 
 	flag := strings.Split(string(line), "|")
-	fmt.Println(flag)
+
 	pathDir := filepath.Dir(file)
 	flietxt := strings.TrimSpace(flag[0])
 	txtf, err := os.Open(path.Join(pathDir, flietxt)) //读取txt文件
@@ -1964,7 +1953,7 @@ func fileToPrometheus(file string, extractor VMDExtractor) error {
 		strss := string(lines[i-1])
 		strss = strings.Replace(strss, "\r", "", -1)
 		infos := strings.Split(strss, "|")
-		fmt.Println(infos)
+
 		if err := extractor(infos); err != nil {
 			return err
 		}
