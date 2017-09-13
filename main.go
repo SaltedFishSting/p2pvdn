@@ -212,6 +212,15 @@ var ( //statistic.userStatistic.action
 			Help:      "decreased login user.",
 		},
 	)
+	//*最近三分钟登出用户数
+	userStatistic_dcategory = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: "p2p",
+		Subsystem: "userStatistic",
+		Name:      "category",
+		Help:      "dcategory login user",
+	}, []string{
+		"category",
+	})
 )
 
 func regUserStatistic() {
@@ -220,6 +229,7 @@ func regUserStatistic() {
 	prometheus.MustRegister(userStatistic_activable)
 	prometheus.MustRegister(userStatistic_login)
 	prometheus.MustRegister(userStatistic_logout)
+	prometheus.MustRegister(userStatistic_dcategory)
 }
 
 func extractUserStatistic(userS []string) error {
@@ -229,6 +239,14 @@ func extractUserStatistic(userS []string) error {
 	activableUserNum, _ := strconv.Atoi(userS[3])
 	loginUserNum, _ := strconv.Atoi(userS[4])
 	logoutUserNum, _ := strconv.Atoi(userS[5])
+	strss := strings.Replace(userS[6], "[", "", -1)
+	strss = strings.Replace(strss, "]", "", -1)
+	infos := strings.Split(strss, ",")
+	var darray = make([]int, 10)
+	for i, v := range infos {
+		aint, _ := strconv.Atoi(v)
+		darray[i] = aint
+	}
 
 	if globeCfg.Output.Prometheus || globeCfg.Output.PushGateway {
 		userStatistic_online.Set(float64(onlineUserNum))
@@ -236,6 +254,16 @@ func extractUserStatistic(userS []string) error {
 		userStatistic_activable.Set(float64(activableUserNum))
 		userStatistic_login.Set(float64(loginUserNum))
 		userStatistic_logout.Set(float64(logoutUserNum))
+		userStatistic_dcategory.WithLabelValues("X1").Set(float64(darray[0]))
+		userStatistic_dcategory.WithLabelValues("N7/N8").Set(float64(darray[1]))
+		userStatistic_dcategory.WithLabelValues("IOS").Set(float64(darray[2]))
+		userStatistic_dcategory.WithLabelValues("Android").Set(float64(darray[3]))
+		userStatistic_dcategory.WithLabelValues("WEB_GW").Set(float64(darray[4]))
+		userStatistic_dcategory.WithLabelValues("PC").Set(float64(darray[5]))
+		userStatistic_dcategory.WithLabelValues("AGENT").Set(float64(darray[6]))
+		userStatistic_dcategory.WithLabelValues("PSTN_GW").Set(float64(darray[7]))
+		userStatistic_dcategory.WithLabelValues("LINUX").Set(float64(darray[8]))
+		userStatistic_dcategory.WithLabelValues("CLOUD_GW").Set(float64(darray[9]))
 	}
 
 	if globeCfg.Output.Telegraf {
